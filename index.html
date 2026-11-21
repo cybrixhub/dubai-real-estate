@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Aurelle — Dubai Private Residences</title>
+    <meta name="description" content="Aurelle curates Dubai's most exceptional residences — sky villas, beachfront estates and penthouses across Downtown, Palm Jumeirah, Dubai Marina and Business Bay." />
+    <meta name="theme-color" content="#F7F4ED" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Aurelle — Dubai Private Residences" />
+    <meta property="og:description" content="Sky residences, beachfront villas and penthouses — explore every home in real-time 3D." />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- Critical paint: ivory + the hero sky before any JS or CSS file arrives -->
+    <style>
+      html, body { margin: 0; background: #f7f4ed; }
+      #root:empty { min-height: 100vh; background: linear-gradient(180deg, #b9c8cd 0%, #dcd9cf 42%, #f0dfc6 64%, #f7f4ed 100%); }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>
+      <p style="font-family: Georgia, serif; padding: 40px; color: #303638">
+        Aurelle — Dubai Private Residences. Please enable JavaScript to explore our residences, or call +971 4 000 0000.
+      </p>
+    </noscript>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

@@ -1,0 +1,33 @@
+# Aurelle — Dubai Private Residences
+
+Ultra-premium real estate website with real-time 3D, built with **Vite + React 19, React Three Fiber / three.js, GSAP ScrollTrigger and Lenis**.
+
+```bash
+npm install
+npm run dev      # http://localhost:5173
+npm run build    # production build in dist/
+npm run preview
+```
+
+## Experience
+| Section | What it does |
+|---|---|
+| Hero | Procedural golden-hour Dubai skyline (Y-plan supertall, instanced towers, Palm island, reflective Gulf), scripted aerial intro, scroll dolly + pointer parallax |
+| Residences | Interactive 3D stage: Sky Residences tower with **floor selector**, beachfront villa, penthouse **dollhouse cut-away**, marina collection |
+| Neighbourhoods | Pinned scroll story over a hand-drawn SVG map (Downtown, Palm Jumeirah, Marina, Business Bay) |
+| Projects | Filterable cards + detail drawer; imagery is **rendered client-side from the 3D models** (zero image downloads) |
+| Why Dubai / About / Contact | Counters, editorial storytelling, validated enquiry form (pre-filled from floor/project CTAs) |
+
+## Performance design
+- **First screen without 3D:** initial JS is React + GSAP + Lenis (~137 KB gz); fonts are self-hosted (no third-party request) with metric-matched fallbacks; an inline sky gradient paints before any file arrives; the SVG poster shows instantly.
+- **Main thread protected during the intro:** the hero chunk downloads immediately but the scene mounts only after the headline reveal settles; every shader is linked with `compileAsync` (parallel compile) before the first frame; property renders start ~3 s after the hero is on screen (or on first scroll).
+- **Device tiers** (`src/lib/device.js`): **2** desktop = shadows + reflective water; **1** mobile = half city, no shadows/reflector; **0** no WebGL / Save-Data = poster only.
+- **Adaptive resolution:** drei `PerformanceMonitor` lowers/raises DPR from measured FPS (ignoring hidden/throttled periods, never below the desktop look).
+- **Static shadows:** shadow maps render once (hero) or only during model transitions (showcase) instead of every frame.
+- **Draw calls:** city = 4 instanced meshes; spire and Palm island merged into single meshes; materials/textures are created lazily on first use.
+- Canvases stop rendering off-screen; the showcase prebuilds remaining models in idle time; the snapshot renderer reuses models and disposes its context.
+
+## Integration points
+- `src/components/Contact.jsx` → `submit()` simulates sending; POST to your CRM/email endpoint there.
+- `src/data.js` holds all listings, locations and copy. Figures are illustrative.
+- To swap in photogrammetry/GLB assets, load them with drei `useGLTF` (+ Draco/KTX2) inside `src/three/ShowcaseScene.jsx`, replacing the procedural builders in `src/three/models.js`.
