@@ -261,7 +261,7 @@ const World = forwardRef(function World({ P }, ref) {
     const eye = V(ex, base + rv.eye[1], ez)
     const look = V(lx, base + rv.look[1], lz)
     const ctrlTarget = eye.clone().addScaledVector(look.clone().sub(eye).normalize(), 0.6)
-    return { pos: eye, look, ctrlTarget, fov: 64, view: { isolate: 1, lift: 1 } }
+    return { pos: eye, look, ctrlTarget, fov: rv.fov || 64, view: { isolate: 1, lift: 1 } }
   }
 
   /* --------------------------------- progressive plate --------------------------------- */
@@ -332,7 +332,7 @@ const World = forwardRef(function World({ P }, ref) {
     S.roomId = null
     limits(1)
     emit()
-    await fly(L1(), 2.2)
+    await fly(L1(), 1.5)
     S.aptId = null
     emit()
   }
@@ -344,7 +344,7 @@ const World = forwardRef(function World({ P }, ref) {
       // lower the old floor back into the tower, then rise to the new one
       S.level = 2
       limits(2)
-      await fly({ pos: camera.position.clone(), look: ctrl.target.clone(), fov: camera.fov, view: { isolate: 0.03, lift: 0 } }, 0.55, { ease: 'power2.in' })
+      await fly({ pos: camera.position.clone(), look: ctrl.target.clone(), fov: camera.fov, view: { isolate: 0.03, lift: 0 } }, 0.4, { ease: 'power2.in' })
     }
     S.floor = floor
     S.level = 2
@@ -353,7 +353,7 @@ const World = forwardRef(function World({ P }, ref) {
     await ensurePlate()
     limits(2)
     emit()
-    await fly(L2(floor), changing ? 1.7 : 2.4)
+    await fly(L2(floor), changing ? 1.1 : 1.6)
     S.aptId = null
     emit()
   }
@@ -366,7 +366,7 @@ const World = forwardRef(function World({ P }, ref) {
     S.level = 3
     limits(3)
     emit()
-    await fly(L3(aptId, roomId, S.floor), fromL3 ? 1.9 : 2.8, { arc: fromL3 ? 0 : 6 })
+    await fly(L3(aptId, roomId, S.floor), fromL3 ? 0.85 : 1.7, { arc: fromL3 ? 0 : 6, ease: fromL3 ? 'power2.inOut' : 'power3.inOut' })
   }
   const selectFloor = (f) => {
     f = clamp(Math.round(f), 1, TOWER.floors)
@@ -577,7 +577,7 @@ const World = forwardRef(function World({ P }, ref) {
       const diff = S.tTarget - S.tDisp
       if (S.direct) S.tDisp = S.tTarget
       else if (Math.abs(diff) > 2e-5) {
-        S.tDisp += diff * (1 - Math.exp(-dt * 5.5))
+        S.tDisp += diff * (1 - Math.exp(-dt * 12))
         invalidate()
       }
       const T = S.tDisp * tour.total

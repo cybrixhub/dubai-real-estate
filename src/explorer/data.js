@@ -155,11 +155,11 @@ export function roomView(apt, roomId) {
     case 'kitchen': return { eye: [K0 + 1.45, h, 10.9], look: [K0 + 2.6, 1.0, 7.4] }
     case 'gallery': return { eye: [E - 1.2, h, 12.6], look: [2.0, 1.4, 12.6] }
     case 'master': return { eye: [M - 0.8, h, 10.8], look: [1.5, 0.9, 7.2] }
-    case 'mbath': return { eye: [M + 0.45, h, 7.6], look: [M + 2.5, 1.0, 10.0] }
+    case 'mbath': return { eye: [M + 1.6, 6.6, 6.5], look: [M + 1.6, 0, 8.9], fov: 70 }
     case 'bedroom2': return { eye: [L + Dw + 0.8, h, 5.4], look: [W - 0.6, 1.0, 2.2] }
-    case 'bath2': return { eye: [K1 + 0.5, h, 6.9], look: [W - 0.4, 1.0, 8.6] }
+    case 'bath2': return { eye: [K1 + 1.5, 5.8, 6.6], look: [K1 + 1.5, 0, 7.8], fov: 70 }
     case 'pantry': return { eye: [K1 + 0.5, h, 11.0], look: [W - 0.4, 1.0, 9.8] }
-    case 'balcony': return { eye: [(apt.lyt.balU[0] + apt.lyt.balU[1]) / 2, h, -0.5], look: [(apt.lyt.balU[0] + apt.lyt.balU[1]) / 2, 2.2, -30] }
+    case 'balcony': { const c = (apt.lyt.balU[0] + apt.lyt.balU[1]) / 2; return { eye: [c + 0.6, 1.7, 3.4], look: [c + 0.1, 0.8, -2.2], fov: 66 } }
     default: return { eye: [W / 2, h, 11], look: [W / 2, 1, 5] }
   }
 }
@@ -183,13 +183,13 @@ export function interiorStops(apt) {
     { id: 'gallery-w', room: 'gallery', title: 'Corridor', desc: 'A gallery corridor leads to the private wing — bedrooms are kept quiet and apart from the entertaining spaces.', dur: 2.8, dwell: 1.4, eye: [M + 1.5, 1.62, 12.6], look: [1.5, 1.4, 12.6], fov: 64 },
     { id: 'master-door', dur: 2.2, dwell: 0, eye: [M - 1.55, 1.62, 11.9], look: [M - 3, 1.2, 9.2], fov: 64 },
     { id: 'master', room: 'master', title: 'Master Bedroom', desc: R('master').desc, dur: 2.2, dwell: 2.8, eye: [M - 0.9, 1.6, 10.5], look: [1.4, 0.95, 7.0], fov: 66 },
-    { id: 'mbath', room: 'mbath', title: 'Master Bathroom', desc: R('mbath').desc, dur: 3.0, dwell: 2.8, eye: [M + 0.55, 1.6, 7.55], look: [M + 2.6, 0.9, 10.0], fov: 66 },
+    { id: 'mbath', room: 'mbath', title: 'Master Bathroom', desc: R('mbath').desc, dur: 3.0, dwell: 2.8, eye: [M + 1.6, 6.6, 6.5], look: [M + 1.6, 0, 8.9], fov: 70 },
     { id: 'back-master', dur: 2.4, dwell: 0, eye: [M - 0.9, 1.62, 8.2], look: [M - 2.5, 1.2, 6.0], fov: 64 },
     { id: 'back-living', dur: 2.6, dwell: 0, eye: [M - 1.0, 1.62, 5.4], look: [M + 1.5, 1.2, 4.5], fov: 64 },
     { id: 'pass-d2', dur: 2.6, dwell: 0, eye: [L + 0.6, 1.62, 5.4], look: [L + Dw, 1.2, 3.0], fov: 64 },
     { id: 'bed2-door', dur: 2.0, dwell: 0, eye: [L + Dw - 0.7, 1.62, 3.0], look: [L + Dw + 2.2, 1.2, 2.8], fov: 64 },
     { id: 'bedroom2', room: 'bedroom2', title: 'Second Bedroom', desc: R('bedroom2').desc, dur: 2.0, dwell: 2.6, eye: [L + Dw + 0.9, 1.6, 4.9], look: [W - 0.5, 0.95, 2.4], fov: 66 },
-    { id: 'bath2', room: 'bath2', title: 'Second Bathroom', desc: R('bath2').desc, dur: 2.8, dwell: 2.2, eye: [K1 + 0.55, 1.6, 6.85], look: [W - 0.4, 0.95, 8.4], fov: 66 },
+    { id: 'bath2', room: 'bath2', title: 'Second Bathroom', desc: R('bath2').desc, dur: 2.8, dwell: 2.2, eye: [K1 + 1.5, 5.8, 6.6], look: [K1 + 1.5, 0, 7.8], fov: 70 },
     { id: 'back-bed2', dur: 2.6, dwell: 0, eye: [L + Dw + 1.2, 1.62, 3.6], look: [L + Dw - 1.5, 1.3, 3.0], fov: 64 },
     { id: 'back-dining', dur: 2.4, dwell: 0, eye: [L + 1.8, 1.62, 3.0], look: [dm - 1, 1.5, -0.5], fov: 64 },
     { id: 'balcony', room: 'balcony', title: 'Balcony', desc: R('balcony').desc, dur: 3.4, dwell: 5.0, eye: [(apt.lyt.balU[0] + apt.lyt.balU[1]) / 2 + 0.3, 1.62, -1.9], look: [(apt.lyt.balU[0] + apt.lyt.balU[1]) / 2 - 4, 1.75, -24], fov: 62 },

@@ -11,7 +11,7 @@ let lenis = null
 
 export function initSmoothScroll() {
   if (lenis || prefersReducedMotion) return () => {}
-  lenis = new Lenis({ duration: 1.15, easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)), smoothWheel: true })
+  lenis = new Lenis({ duration: 0.8, easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)), smoothWheel: true, wheelMultiplier: 1.1 })
   lenis.on('scroll', ScrollTrigger.update)
   if (import.meta.env.DEV) window.__lenis = lenis
   const raf = (time) => lenis.raf(time * 1000)
