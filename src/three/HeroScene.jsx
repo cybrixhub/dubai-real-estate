@@ -5,7 +5,12 @@ import { MeshReflectorMaterial, PerformanceMonitor } from '@react-three/drei'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import gsap from 'gsap'
 import { facadeMaterial, waterNormalTexture } from './materials.js'
-import { buildTower } from './models.js'
+import { buildGoldTower } from './goldTower.js'
+import { buildPark, treeGeometry } from './park.js'
+import { buildInterior, INTERIOR_MATERIALS } from './interior.js'
+import { materials } from './materials.js'
+import { skyEquirect } from './sky.js'
+import { warmRender } from './warmup.js'
 import { mulberry32 } from '../lib/hooks.js'
 import { trustworthySample } from '../lib/quality.js'
 import { tier, prefersReducedMotion } from '../lib/device.js'
@@ -98,7 +103,7 @@ function genCity(q) {
   const low = []
   const tryAdd = (x, z, h, w, d, shape) => {
     if (Math.hypot(x - SPIRE.x, z - SPIRE.z) < 11) return
-    if (Math.hypot(x - SIGNATURE.x, z - SIGNATURE.z) < 7) return
+    if (Math.hypot(x - SIGNATURE.x, z - SIGNATURE.z) < 19) return
     if (z > 1) return
     const k = key(x, z)
     if (occupied.has(k)) return
@@ -136,6 +141,7 @@ function genCity(q) {
     const z = -380 + Math.pow(rnd(), 0.8) * 380
     if (z > -2) continue
     if (occupied.has(key(x, z))) continue
+    if (Math.hypot(x - SIGNATURE.x, z - SIGNATURE.z) < 24) continue
     const dist = Math.hypot(x - SPIRE.x, z - SPIRE.z)
     const h = dist < 70 ? 2 + rnd() * 3 : 0.5 + rnd() * rnd() * 3
     low.push({ x, z, h, w: 1.6 + rnd() * 3.4, d: 1.6 + rnd() * 3.4, rot: rnd() < 0.8 ? 0 : 0.35 })
@@ -169,7 +175,7 @@ function City() {
     const boxGeo = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0)
     const cylGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 14, 1).translate(0, 0.5, 0)
     const towerMat = facadeMaterial({ color: '#ffffff', cell: [0.3, 0.38], night: 0.08 })
-    const lowMat = facadeMaterial({ color: '#f1e9dc', cell: [0.45, 0.36], roughness: 0.85, metalness: 0.05, winFill: [0.3, 0.7, 0.3, 0.75] })
+    const lowMat = facadeMaterial({ color: '#f1e9dc', cell: [0.3, 0.34], roughness: 0.85, metalness: 0.05, winFill: [0.25, 0.75, 0.3, 0.75] })
     g.add(instanced(boxGeo, towerMat, tall.filter((b) => b.shape === 0)))
     g.add(instanced(cylGeo, towerMat, tall.filter((b) => b.shape === 1)))
     g.add(instanced(boxGeo, towerMat, tall.filter((b) => b.shape === 0 && b.h > 18), { crown: true }))
@@ -290,39 +296,101 @@ function PalmIsland() {
   return <primitive object={group} />
 }
 
-/* ------------------------------ Signature tower ---------------------------- */
-function SignatureTower() {
+/* ------------------------ The Aurelle Gold + park ------------------------ */
+// Site placement (world units): tower faces the sea, turned towards the opening camera.
+const SITE_SCALE = 0.1
+const SITE_YAW = 0.42
+const Y_AXIS = new THREE.Vector3(0, 1, 0)
+const SITE_POS = new THREE.Vector3(SIGNATURE.x, 0.085, SIGNATURE.z)
+const SITE_MATRIX = new THREE.Matrix4().compose(
+  SITE_POS,
+  new THREE.Quaternion().setFromAxisAngle(Y_AXIS, SITE_YAW),
+  new THREE.Vector3(SITE_SCALE, SITE_SCALE, SITE_SCALE)
+)
+/** tower-local (world-unit offsets, rotated with the site) → world */
+const siteToWorld = (x, y, z) => new THREE.Vector3(x, y, z).applyAxisAngle(Y_AXIS, SITE_YAW).add(SITE_POS)
+
+
+// journey geometry, derived from the tower's penthouse window
+const JOURNEY = (() => {
+  // penthouse glass on the inland face: the approach looks out to the Gulf, not into the city
+  const anchorLocal = new THREE.Vector3(0, 9 + 22 * 3.4 + 3.4 * 0.55, -18 / 2) // see TOWER in goldTower.js
+  const anchor = anchorLocal.clone().applyMatrix4(SITE_MATRIX)
+  const normal = new THREE.Vector3(0, 0, -1).applyAxisAngle(Y_AXIS, SITE_YAW)
+  const center = siteToWorld(0, 6, 0)
+  const pos = new THREE.CatmullRomCurve3(
+    [
+      siteToWorld(17, 12.5, 24),
+      siteToWorld(16, 9.5, -1),
+      siteToWorld(7, 8.9, -10),
+      anchor.clone().addScaledVector(normal, 3.2),
+      anchor.clone().addScaledVector(normal, 0.32),
+    ],
+    false,
+    'centripetal'
+  )
+  const look = new THREE.CatmullRomCurve3(
+    [center, siteToWorld(0, 6.5, 0), siteToWorld(0, 8, 0), anchor.clone(), anchor.clone().addScaledVector(normal, -3)],
+    false,
+    'centripetal'
+  )
+  return { anchor, normal, pos, look }
+})()
+
+// progress milestones (0..1 across the pinned hero)
+const J = { leave: 0.03, arrive: 0.565, cut: 0.588 }
+
+/** Landscaped waterfront district around the site: soft lawns + scattered tree canopy (2 draw calls). */
+function District() {
   const group = useMemo(() => {
-    const t = buildTower({ floors: 44, w: 18, d: 12, night: 0.2, landscape: false })
-    t.core.userData.uniforms.uCell.value.set(0.16, 0.34)
-    t.group.scale.setScalar(0.1)
-    t.group.position.copy(SIGNATURE)
-    t.group.rotation.y = -0.35
-    // At aerial distance, textured / physical materials are indistinguishable from plain PBR —
-    // remapping them avoids 4 extra shader programs (x2 for the reflection pass) on first load.
-    const remap = new Map()
-    const simple = (m) => {
-      if (!remap.has(m))
-        remap.set(
-          m,
-          new THREE.MeshStandardMaterial({
-            color: m.map ? '#e6dccb' : m.color,
-            roughness: m.roughness,
-            metalness: m.metalness,
-            transparent: m.transparent,
-            opacity: m.opacity,
-            depthWrite: m.depthWrite,
-          })
-        )
-      return remap.get(m)
+    const g = new THREE.Group()
+    const lawn = new THREE.Mesh(
+      new THREE.CircleGeometry(26, 64).rotateX(-Math.PI / 2),
+      new THREE.MeshStandardMaterial({ color: '#a3ab8b', roughness: 1 })
+    )
+    lawn.position.set(SIGNATURE.x, 0.075, SIGNATURE.z - 4)
+    lawn.scale.set(1, 1, 0.75)
+    lawn.receiveShadow = tier === 2
+    g.add(lawn)
+    const rnd = mulberry32(31)
+    const n = tier === 2 ? 420 : 200
+    const trees = new THREE.InstancedMesh(treeGeometry(5), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 }), n)
+    const o = new THREE.Object3D()
+    const c = new THREE.Color()
+    let k = 0
+    for (let i = 0; i < n * 6 && k < n; i++) {
+      const a = rnd() * Math.PI * 2
+      const r = 9.5 + Math.pow(rnd(), 0.8) * 16
+      const x = SIGNATURE.x + Math.cos(a) * r
+      const z = SIGNATURE.z - 4 + Math.sin(a) * r * 0.75
+      if (z > -0.6) continue // keep the beach clear
+      const sc = 0.07 + rnd() * 0.05
+      o.position.set(x, 0.08, z)
+      o.rotation.set(0, rnd() * 6.28, 0)
+      o.scale.setScalar(sc)
+      o.updateMatrix()
+      trees.setMatrixAt(k, o.matrix)
+      trees.setColorAt(k, c.setHSL(0.2 + rnd() * 0.07, 0.22, 0.8 + rnd() * 0.3))
+      k++
     }
-    t.group.traverse((o) => {
-      if (!o.isMesh) return
-      if (o.material.isMeshPhysicalMaterial || o.material.map) o.material = simple(o.material)
-      o.castShadow = tier === 2
-      o.receiveShadow = tier === 2
-    })
-    return t.group
+    trees.count = k
+    trees.castShadow = trees.receiveShadow = tier === 2
+    g.add(trees)
+    return g
+  }, [])
+  return <primitive object={group} />
+}
+
+function GoldSite() {
+  const group = useMemo(() => {
+    const g = new THREE.Group()
+    const t = buildGoldTower({ s: SITE_SCALE, night: 0.45, shadows: tier === 2 })
+    const park = buildPark({ shadows: tier === 2, quality: tier === 2 ? 1 : 0.55 })
+    g.add(t.group, park.group)
+    g.position.copy(SITE_POS)
+    g.rotation.y = SITE_YAW
+    g.scale.setScalar(SITE_SCALE)
+    return g
   }, [])
   return <primitive object={group} />
 }
@@ -369,14 +437,33 @@ function Ground({ reflect }) {
 }
 
 /* ------------------------------- Camera rig -------------------------------- */
-function CameraRig({ started }) {
-  const { camera } = useThree()
+const smooth = (a, b, x) => {
+  const t = THREE.MathUtils.clamp((x - a) / (b - a), 0, 1)
+  return t * t * (3 - 2 * t)
+}
+const easeIn = (t) => t * t * (2 - t) * 0.5 + t * 0.5 // soft start, unit slope at the end
+
+/**
+ * Journey camera. p (scroll progress) 0 → J.arrive flies from the aerial establishing
+ * shot around The Aurelle Gold to its penthouse glass; past J.cut the interior camera
+ * walks through the residence. Before scrolling, the aerial shot drifts and follows the pointer.
+ */
+function CameraRig({ started, interior }) {
+  const { camera, scene } = useThree()
   const intro = useRef({ v: prefersReducedMotion ? 1 : 0 })
-  const target = useMemo(() => new THREE.Vector3(), [])
+  const aerialPos = useMemo(() => new THREE.Vector3(), [])
+  const aerialLook = useMemo(() => new THREE.Vector3(), [])
+  const pathPos = useMemo(() => new THREE.Vector3(), [])
+  const pathLook = useMemo(() => new THREE.Vector3(), [])
   const desired = useMemo(() => new THREE.Vector3(), [])
+  const target = useMemo(() => new THREE.Vector3(), [])
   const look = useMemo(() => new THREE.Vector3(-14, 16, -48), [])
+  const iLook = useMemo(() => new THREE.Vector3(), [])
+  const iPos = useMemo(() => new THREE.Vector3(), [])
+  const iLookT = useMemo(() => new THREE.Vector3(), [])
   const smoothMouse = useRef({ x: 0, y: 0 })
   const first = useRef(true)
+  const iFirst = useRef(true)
 
   // The aerial descent starts with the first visible frame, not when the chunk loads.
   useEffect(() => {
@@ -394,21 +481,172 @@ function CameraRig({ started }) {
     m.x += (heroState.mouseX - m.x) * Math.min(1, dt * 2)
     m.y += (heroState.mouseY - m.y) * Math.min(1, dt * 2)
 
-    const theta = 0.5 + Math.sin(t * 0.045) * 0.1 + m.x * 0.05 - p * 0.18 + (1 - iv) * 0.35
-    const R = THREE.MathUtils.lerp(300, 170, p) * THREE.MathUtils.lerp(1.9, 1, iv)
-    const Y = THREE.MathUtils.lerp(62, 34, p) * THREE.MathUtils.lerp(2.6, 1, iv) - m.y * 5
-    target.set(THREE.MathUtils.lerp(-14, 0, p), THREE.MathUtils.lerp(24, 30, p), THREE.MathUtils.lerp(-48, -70, p))
-    desired.set(target.x + Math.sin(theta) * R, Y, target.z + Math.cos(theta) * R)
+    // 1) aerial establishing shot (drift + pointer parallax)
+    const theta = 0.5 + Math.sin(t * 0.045) * 0.1 + m.x * 0.05 + (1 - iv) * 0.35
+    const R = 300 * THREE.MathUtils.lerp(1.9, 1, iv)
+    const Y = 62 * THREE.MathUtils.lerp(2.6, 1, iv) - m.y * 5
+    aerialLook.set(-14, 24, -48)
+    aerialPos.set(aerialLook.x + Math.sin(theta) * R, Y, aerialLook.z + Math.cos(theta) * R)
+
+    // 2) flight to the penthouse
+    const w = smooth(J.leave, 0.2, p)
+    // constant speed along the flight (arc-length), gentle ease-in only; the last metres to the
+    // glass happen under the warm "through the glass" transition
+    const tl = THREE.MathUtils.clamp((p - J.leave) / (J.arrive - J.leave), 0, 1)
+    const u = tl < 0.2 ? easeIn(tl / 0.2) * 0.2 : tl
+    JOURNEY.pos.getPointAt(u, pathPos)
+    JOURNEY.look.getPointAt(u, pathLook)
+    desired.lerpVectors(aerialPos, pathPos, w)
+    target.lerpVectors(aerialLook, pathLook, w)
+
     if (first.current) {
-      // start exactly on the intro pose — no swoop from the default camera position
       camera.position.copy(desired)
       look.copy(target)
       first.current = false
     }
-    camera.position.lerp(desired, Math.min(1, dt * 3))
-    look.lerp(target, Math.min(1, dt * 3))
+    const k = Math.min(1, dt * 6)
+    camera.position.lerp(desired, k)
+    look.lerp(target, k)
     camera.lookAt(look)
+
+    // atmospheric perspective tightens as we leave the aerial shot (Gulf haze)
+    if (scene.fog) {
+      scene.fog.near = THREE.MathUtils.lerp(160, 6, w)
+      scene.fog.far = THREE.MathUtils.lerp(tier === 2 ? 1150 : 800, 160, w)
+    }
+
+    // close to the façade the near plane must come in (and the far plane can relax)
+    const d = camera.position.distanceTo(JOURNEY.anchor)
+    const near = THREE.MathUtils.clamp(d * 0.03, 0.02, 1)
+    if (Math.abs(camera.near - near) > near * 0.05) {
+      camera.near = near
+      camera.far = near < 0.5 ? 3000 : 9000
+      camera.updateProjectionMatrix()
+    }
+
+    // 3) interior walkthrough
+    if (interior.current) {
+      const ic = interior.current
+      const u2 = THREE.MathUtils.clamp((p - J.cut) / (0.985 - J.cut), 0, 1)
+      ic.path.getPoint(u2, iPos)
+      ic.look.getPoint(u2, iLookT)
+      if (iFirst.current || p < J.cut) {
+        ic.camera.position.copy(iPos)
+        iLook.copy(iLookT)
+        iFirst.current = false
+      }
+      ic.camera.position.lerp(iPos, k)
+      iLook.lerp(iLookT, k)
+      ic.camera.lookAt(iLook)
+    }
   })
+  return null
+}
+
+/* --------------------- Penthouse interior (own scene) --------------------- */
+/**
+ * Built in idle time after the city is on screen, its shaders compiled async and its
+ * (static) sun shadow rendered once offscreen — so entering it never stutters.
+ */
+function useInterior(started) {
+  const { gl } = useThree()
+  const ref = useRef(null)
+  const [, setReady] = useState(false)
+  useEffect(() => {
+    if (!started) return
+    let alive = true
+    const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 120))
+    // every heavy stage gets its own idle slice, so no single task blocks the page for long
+    const slice = () => new Promise((r) => idle(r, { timeout: 1200 }))
+    const id = idle(
+      async () => {
+        const M = materials()
+        for (const key of INTERIOR_MATERIALS) {
+          void M[key] // creates the material + its procedural texture
+          await slice()
+          if (!alive) return
+        }
+        const scene = new THREE.Scene()
+        const built = buildInterior({ quality: tier === 2 ? 1 : 0.5 })
+        scene.add(built.group)
+        await slice()
+        if (!alive) return
+        const pmrem = new THREE.PMREMGenerator(gl)
+        const sky = skyEquirect({ warm: 1, sunU: 0.12, sunV: 0.42 })
+        const env = pmrem.fromEquirectangular(sky)
+        scene.environment = env.texture
+        scene.environmentIntensity = 0.55
+        sky.dispose()
+        pmrem.dispose()
+        const camera = new THREE.PerspectiveCamera(50, gl.domElement.clientWidth / Math.max(1, gl.domElement.clientHeight), 0.05, 300)
+        camera.position.copy(built.path.getPoint(0))
+        camera.lookAt(built.look.getPoint(0))
+        await slice()
+        if (!alive) return
+        try {
+          await gl.compileAsync(scene, camera)
+          if (!alive) return
+          await slice()
+          if (!alive) return
+          warmRender(gl, scene, camera, { screen: true }) // also bakes the interior sun shadow once
+        } catch {
+          /* compile on first use instead */
+        }
+        if (!alive) return
+        ref.current = { scene, camera, path: built.path, look: built.look, env }
+        setReady(true)
+      },
+      { timeout: 2500 }
+    )
+    return () => {
+      alive = false
+      window.cancelIdleCallback?.(id)
+    }
+  }, [started, gl])
+  return ref
+}
+
+function Journey({ started }) {
+  const interior = useInterior(started)
+  return (
+    <>
+      <CameraRig started={started} interior={interior} />
+      <JourneyRenderer interior={interior} />
+    </>
+  )
+}
+
+/** Renders either the city or the penthouse, never both (priority 1 = manual render). */
+function JourneyRenderer({ interior }) {
+  const { gl, scene, camera, size } = useThree()
+  const inside = () => !!interior.current && heroState.progress >= J.cut
+  // runs first: hide the city while inside, so the water-reflection pass costs nothing
+  useFrame(() => {
+    scene.visible = !inside()
+  }, -1)
+  useFrame(() => {
+    if (inside()) {
+      const ic = interior.current
+      const aspect = size.width / Math.max(1, size.height)
+      if (Math.abs(ic.camera.aspect - aspect) > 1e-3) {
+        ic.camera.aspect = aspect
+        // keep the room readable on portrait screens
+        ic.camera.fov = aspect < 1 ? 68 : 50
+        ic.camera.updateProjectionMatrix()
+      }
+      gl.toneMappingExposure = 1.12
+      gl.render(ic.scene, ic.camera)
+    } else {
+      // portrait screens get a wider lens so the tower stays in frame during the approach
+      const fov = size.width < size.height ? 48 : 32
+      if (camera.fov !== fov) {
+        camera.fov = fov
+        camera.updateProjectionMatrix()
+      }
+      gl.toneMappingExposure = 1.05
+      gl.render(scene, camera)
+    }
+  }, 1)
   return null
 }
 
@@ -437,12 +675,10 @@ function Warmup({ onDone }) {
         if (!alive) return
         // 2) one real render into a tiny offscreen target: builds the (static) shadow map and the
         //    render-target shader variants used by the water reflection, in its own task
-        const rt = new THREE.WebGLRenderTarget(8, 8)
-        gl.setRenderTarget(rt)
-        gl.shadowMap.needsUpdate = true
-        gl.render(scene, camera)
-        gl.setRenderTarget(null)
-        rt.dispose()
+        warmRender(gl, scene, camera, { screen: false, offscreen: true })
+        await new Promise((r) => setTimeout(r, 0))
+        if (!alive) return
+        warmRender(gl, scene, camera, { screen: true })
         // 3) yield, so the first visible frame starts in a fresh task
         await new Promise((r) => setTimeout(r, 0))
       } catch {
@@ -527,10 +763,11 @@ export default function HeroScene({ active = true, onReady }) {
       <Lights />
       <City />
       <Spire />
-      <SignatureTower />
+      <District />
+      <GoldSite />
       <PalmIsland />
       <Ground reflect={q.reflect} />
-      <CameraRig started={compiled} />
+      <Journey started={compiled} />
       {!compiled && <Warmup onDone={onCompiled} />}
       {compiled && <ReadySignal onReady={onReady} />}
     </Canvas>

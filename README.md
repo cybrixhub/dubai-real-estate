@@ -12,7 +12,7 @@ npm run preview
 ## Experience
 | Section | What it does |
 |---|---|
-| Hero | Procedural golden-hour Dubai skyline (Y-plan supertall, instanced towers, Palm island, reflective Gulf), scripted aerial intro, scroll dolly + pointer parallax |
+| Hero | Pinned, scroll-scrubbed 3D journey: golden-hour Dubai skyline → orbit **The Aurelle Gold** (gold-fin tower, lit duplex penthouse, lantern crown, park with reflecting pond, palms and trees) → through the penthouse glass → walkthrough of a realistic penthouse interior (low sun, shadows, walnut, marble, fireplace, skyline view) with glass caption cards |
 | Residences | Interactive 3D stage: Sky Residences tower with **floor selector**, beachfront villa, penthouse **dollhouse cut-away**, marina collection |
 | Neighbourhoods | Pinned scroll story over a hand-drawn SVG map (Downtown, Palm Jumeirah, Marina, Business Bay) |
 | Projects | Filterable cards + detail drawer; imagery is **rendered client-side from the 3D models** (zero image downloads) |
@@ -26,6 +26,14 @@ npm run preview
 - **Static shadows:** shadow maps render once (hero) or only during model transitions (showcase) instead of every frame.
 - **Draw calls:** city = 4 instanced meshes; spire and Palm island merged into single meshes; materials/textures are created lazily on first use.
 - Canvases stop rendering off-screen; the showcase prebuilds remaining models in idle time; the snapshot renderer reuses models and disposes its context.
+
+## The hero journey
+- `src/three/goldTower.js` – the tower (metres; instanced fins and slab edges, painted lit penthouse).
+- `src/three/park.js` – lawn, pond, paths, instanced broadleaf trees and palms.
+- `src/three/interior.js` – the penthouse interior (own scene at human scale) and its camera path.
+- `src/three/HeroScene.jsx` – camera journey (`JOURNEY`, milestones `J`), city/interior render switch, staged warm-up.
+- `src/three/warmup.js` – render-based shader warm-up (screen + offscreen variants) so nothing compiles on first view.
+- Timing of captions / transition lives in `src/components/Hero.jsx` (pinned timeline, `end: +=340%`).
 
 ## Integration points
 - `src/components/Contact.jsx` → `submit()` simulates sending; POST to your CRM/email endpoint there.

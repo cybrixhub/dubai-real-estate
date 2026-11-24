@@ -5,6 +5,7 @@ import { OrbitControls, PerformanceMonitor } from '@react-three/drei'
 import gsap from 'gsap'
 import { buildTower, buildVilla, buildPenthouse, buildMarina } from './models.js'
 import { skyEquirect } from './sky.js'
+import { warmRender } from './warmup.js'
 import { trustworthySample } from '../lib/quality.js'
 import { tier, isTouch } from '../lib/device.js'
 
@@ -71,6 +72,7 @@ function Environment() {
 const shadowDirty = { until: 0 }
 const markShadows = (ms) => (shadowDirty.until = Math.max(shadowDirty.until, performance.now() + ms))
 
+
 function ShadowScheduler() {
   const { gl } = useThree()
   useEffect(() => {
@@ -83,12 +85,21 @@ function ShadowScheduler() {
   return null
 }
 
-function Models({ active, floor, controls, onFirstReady }) {
+function Models({ active, floor, controls, onFirstReady, prefetch }) {
   const { camera, gl, scene } = useThree()
   const root = useMemo(() => new THREE.Group(), [])
   const groups = useRef({})
   const current = useRef(null)
+  const startPrefetch = useRef(null)
+  const prefetched = useRef(false)
   const [, force] = useState(0)
+
+  useEffect(() => {
+    if (prefetch && startPrefetch.current && !prefetched.current) {
+      prefetched.current = true
+      startPrefetch.current()
+    }
+  })
 
   const ensure = useCallback(
     (key) => {
@@ -110,22 +121,32 @@ function Models({ active, floor, controls, onFirstReady }) {
       .catch(() => {})
       .then(() => {
         if (!alive) return
+        // one offscreen render builds the static shadow map + remaining variants now,
+        // instead of on the first frame the visitor actually sees
+        try {
+          warmRender(gl, scene, camera, { screen: true })
+        } catch {
+          /* first visible frame will do it */
+        }
         force((n) => n + 1)
         onFirstReady?.()
         const rest = ORDER.filter((k) => !groups.current[k])
+        // remaining models are prebuilt only once the visitor shows intent (see `prefetch`),
+        // one per idle slice: build → yield → async compile → pause
         const next = () => {
-          const k = rest.shift()
+          const k = rest.find((key) => !groups.current[key])
           if (!k || !alive) return
+          rest.splice(rest.indexOf(k), 1)
           idle(
             () => {
               if (!alive) return
               const g = ensure(k)
-              gl.compileAsync(g, camera, scene).catch(() => {}).then(() => setTimeout(next, 150))
+              idle(() => gl.compileAsync(g, camera, scene).catch(() => {}).then(() => setTimeout(next, 900)), { timeout: 2000 })
             },
             { timeout: 4000 }
           )
         }
-        setTimeout(next, 1200)
+        startPrefetch.current = next
       })
     return () => {
       alive = false
@@ -228,7 +249,7 @@ function Controls({ controlsRef }) {
 const DPRS = tier === 2 ? [1, 1.5, 1.75] : [1, 1.25, 1.5]
 const MIN_LEVEL = tier === 2 ? 1 : 0
 
-export default function ShowcaseScene({ active, floor, running = true, onReady }) {
+export default function ShowcaseScene({ active, floor, running = true, onReady, prefetch = false }) {
   const controls = useRef()
   const [level, setLevel] = useState(tier === 2 ? 2 : 1)
   const [shown, setShown] = useState(false)
@@ -260,7 +281,7 @@ export default function ShowcaseScene({ active, floor, running = true, onReady }
         <circleGeometry args={[60, 64]} />
         <shadowMaterial transparent opacity={0.16} />
       </mesh>
-      <Models active={active} floor={floor} controls={controls} onFirstReady={handleFirst} />
+      <Models active={active} floor={floor} controls={controls} onFirstReady={handleFirst} prefetch={prefetch} />
       <Controls controlsRef={controls} />
     </Canvas>
   )

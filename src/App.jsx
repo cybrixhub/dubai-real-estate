@@ -29,11 +29,23 @@ export default function App() {
       fired = true
       setTimeout(() => (id = idle(() => startSnapshots(), { timeout: 2000 })), delay)
     }
-    const onHeroReady = () => kick(3200)
-    const onScroll = () => window.scrollY > window.innerHeight * 0.35 && kick(0)
+    const pastHero = () => {
+      const next = document.getElementById('residences')
+      return !!next && next.getBoundingClientRect().top < window.innerHeight * 2.5
+    }
+    // safe moments: idling on the opening shot, or already past the journey
+    let timer
+    const whenSafe = (delay) => {
+      clearTimeout(timer)
+      timer = setTimeout(() => (window.scrollY < 40 || pastHero() ? kick(0) : whenSafe(2500)), delay)
+    }
+    const onHeroReady = () => whenSafe(3200)
+    // the hero is a pinned 3D journey: wait until the visitor is past it, so the GPU work of
+    // the property renders never competes with the flight
+    const onScroll = () => pastHero() && kick(0)
     window.addEventListener('aurelle:hero-ready', onHeroReady)
     window.addEventListener('scroll', onScroll, { passive: true })
-    const fallback = setTimeout(() => kick(0), tier === 0 ? 0 : 9000)
+    const fallback = setTimeout(() => (tier === 0 ? kick(0) : whenSafe(0)), tier === 0 ? 0 : 9000)
     const onLoad = () => ScrollTrigger.refresh()
     window.addEventListener('load', onLoad)
     document.fonts?.ready.then(onLoad)
@@ -41,6 +53,7 @@ export default function App() {
       stop()
       window.cancelIdleCallback?.(id)
       clearTimeout(fallback)
+      clearTimeout(timer)
       window.removeEventListener('aurelle:hero-ready', onHeroReady)
       window.removeEventListener('scroll', onScroll)
       window.removeEventListener('load', onLoad)

@@ -30,7 +30,7 @@ function block(parent, w, h, d, mat, x, y, z, r = 0, { ry = 0, cast = true, rece
 /*  Palm tree — tube trunk + alpha-tested leaflet fronds                       */
 /* -------------------------------------------------------------------------- */
 let frondMat = null
-function getFrondMaterial() {
+export function getFrondMaterial() {
   if (frondMat) return frondMat
   const tex = canvasTexture(
     256,
@@ -69,7 +69,7 @@ function getFrondMaterial() {
 }
 
 let frondGeo = null
-function getFrondGeometry() {
+export function getFrondGeometry() {
   if (frondGeo) return frondGeo
   const L = 3.4
   const geo = new THREE.PlaneGeometry(L, 1.4, 14, 4)

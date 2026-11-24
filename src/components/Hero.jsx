@@ -6,6 +6,9 @@ import { heroState } from '../three/heroState.js'
 
 // The 3D scene is code-split: the page renders instantly with the poster art,
 // and the WebGL chunk streams in after first paint.
+// The cinematic journey needs the 3D scene and normal motion preferences.
+const JOURNEY = tier > 0 && !prefersReducedMotion
+
 let heroChunk = null
 const loadHeroScene = () => (heroChunk ||= import('../three/HeroScene.jsx'))
 const HeroScene = lazy(loadHeroScene)
@@ -67,19 +70,43 @@ export default function Hero() {
       if (!prefersReducedMotion) {
         gsap.from('.hero-title .line-mask > span', { yPercent: 110, duration: 1.5, ease: 'expo.out', stagger: 0.12, delay: 0.15 })
         gsap.from('.hero-anim', { y: 24, opacity: 0, duration: 1.3, ease: 'power3.out', stagger: 0.08, delay: 0.55 })
-        gsap.to('.hero-content', {
-          yPercent: -8,
-          opacity: 0.2,
-          ease: 'none',
-          scrollTrigger: { trigger: root.current, start: 'top top', end: 'bottom top', scrub: true },
+      }
+      if (JOURNEY) {
+        // Pinned, scroll-scrubbed journey: aerial city → orbit The Aurelle Gold →
+        // through the penthouse glass → interior walkthrough. Progress drives the 3D camera.
+        const tl = gsap.timeline({
+          defaults: { ease: 'none' },
+          scrollTrigger: {
+            trigger: root.current,
+            start: 'top top',
+            end: '+=340%',
+            pin: true,
+            scrub: 0.6,
+            anticipatePin: 1,
+            onUpdate: (self) => (heroState.progress = self.progress),
+          },
+        })
+        tl.to('.hero-content', { opacity: 0, y: -50, duration: 0.09, ease: 'power1.in' }, 0)
+          .to('.hero-veil', { opacity: 0, duration: 0.16 }, 0.03)
+          .fromTo('.tour-intro', { autoAlpha: 0, y: 30 }, { autoAlpha: 1, y: 0, duration: 0.05 }, 0.2)
+          .to('.tour-intro', { autoAlpha: 0, y: -24, duration: 0.05 }, 0.44)
+          .fromTo('.hero-flash', { opacity: 0 }, { opacity: 1, duration: 0.04, ease: 'power2.in' }, 0.546)
+          .to('.hero-flash', { opacity: 0, duration: 0.07, ease: 'power2.out' }, 0.59)
+        gsap.utils.toArray('.tour-card').forEach((el, i) => {
+          const at = 0.645 + i * 0.112
+          tl.fromTo(el, { autoAlpha: 0, y: 30 }, { autoAlpha: 1, y: 0, duration: 0.035 }, at)
+          if (i < 2) tl.to(el, { autoAlpha: 0, y: -24, duration: 0.035 }, at + 0.085)
+        })
+        tl.to('.scroll-cue', { opacity: 0, duration: 0.05 }, 0)
+        tl.set({}, {}, 1)
+      } else {
+        ScrollTrigger.create({
+          trigger: root.current,
+          start: 'top top',
+          end: 'bottom top',
+          onUpdate: (self) => (heroState.progress = self.progress * 0.15),
         })
       }
-      ScrollTrigger.create({
-        trigger: root.current,
-        start: 'top top',
-        end: 'bottom top',
-        onUpdate: (self) => (heroState.progress = self.progress),
-      })
     }, root)
     return () => ctx.revert()
   }, [])
@@ -107,6 +134,39 @@ export default function Hero() {
         )}
       </div>
       <div className="hero-veil" />
+      <div className="hero-flash" aria-hidden="true" />
+      {JOURNEY && (
+        <div className="tour">
+          <div className="tour-intro glass">
+            <span className="eyebrow">Now releasing</span>
+            <h3>The Aurelle Gold</h3>
+            <p>24 floors wrapped in brushed-gold fins, set in a private 4-acre park with a reflecting pond.</p>
+            <div className="tour-facts">
+              <div><strong>96 m</strong><span>Height</span></div>
+              <div><strong>124</strong><span>Residences</span></div>
+              <div><strong>Q4 2028</strong><span>Handover</span></div>
+            </div>
+          </div>
+          <div className="tour-card glass">
+            <span className="eyebrow">Duplex penthouse · Level 23</span>
+            <h3>The Salon</h3>
+            <p>64 m² of living beneath 3.8 m ceilings, framed by full-height glass on two sides.</p>
+          </div>
+          <div className="tour-card glass">
+            <span className="eyebrow">Entertaining</span>
+            <h3>Dining &amp; kitchen</h3>
+            <p>A walnut table for ten, a marble island and a linear fireplace in one long, light-filled room.</p>
+          </div>
+          <div className="tour-card glass">
+            <span className="eyebrow">The view</span>
+            <h3>270° over the Gulf</h3>
+            <p>From the supertall spire to the open sea — golden hour, every evening.</p>
+            <a className="btn tour-cta" href="#contact" onClick={(e) => (e.preventDefault(), scrollToTarget('#contact'))}>
+              Request a private viewing <span className="arrow" />
+            </a>
+          </div>
+        </div>
+      )}
       <div className="hero-content">
         <div className="hero-copy">
           <span className="eyebrow hero-anim">Private residences · Dubai</span>
@@ -136,16 +196,16 @@ export default function Hero() {
 
         <aside className="hero-card hero-anim" aria-label="Featured release">
           <span className="eyebrow">Now releasing</span>
-          <h3>The Aurelle Sky Residences</h3>
-          <p>Downtown Dubai · 44 floors of terraced living</p>
+          <h3>The Aurelle Gold</h3>
+          <p>Waterfront Downtown · 24 floors · gold-fin façade</p>
           <div className="row">
             <div>
               <div className="small">Floors available</div>
-              <div className="big">14</div>
+              <div className="big">9</div>
             </div>
             <div style={{ textAlign: 'right' }}>
               <div className="small">From</div>
-              <div style={{ fontFamily: 'var(--serif)', fontSize: '1.4rem' }}>AED 3.85M</div>
+              <div style={{ fontFamily: 'var(--serif)', fontSize: '1.4rem' }}>AED 6.2M</div>
             </div>
           </div>
         </aside>
@@ -166,7 +226,7 @@ export default function Hero() {
             </div>
           </div>
           <div className="scroll-cue">
-            <i /> Scroll to discover
+            <i /> {JOURNEY ? 'Scroll to enter the residence' : 'Scroll to discover'}
           </div>
         </div>
       </div>

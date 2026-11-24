@@ -22,7 +22,25 @@ export default function Showcase({ onEnquire }) {
   const [stageRef, near] = useInView('100% 0px', true)
   const [visRef, visible] = useInView('0px')
   const [sceneReady, setSceneReady] = useState(false)
+  // visitor intent (hover / focus / touch near the list or stage) → prebuild the other models
+  const [prefetch, setPrefetch] = useState(false)
+  const intent = useCallback(() => setPrefetch(true), [])
   const onSceneReady = useCallback(() => setSceneReady(true), [])
+  // Warm the 3D stage while the visitor idles on the opening shot (after the hero and its
+  // penthouse are prepared), so it never builds mid-scroll. Falls back to "near viewport".
+  const [preload, setPreload] = useState(false)
+  useEffect(() => {
+    if (tier === 0) return
+    let t
+    const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 1))
+    const check = () => (window.scrollY < 40 ? idle(() => setPreload(true), { timeout: 1500 }) : (t = setTimeout(check, 3000)))
+    const onReady = () => (t = setTimeout(check, 11000))
+    window.addEventListener('aurelle:hero-ready', onReady)
+    return () => {
+      clearTimeout(t)
+      window.removeEventListener('aurelle:hero-ready', onReady)
+    }
+  }, [])
   const head = useRef(null)
   const r = residenceFor(floor)
   const current = typologies.find((t) => t.id === active)
@@ -65,7 +83,7 @@ export default function Showcase({ onEnquire }) {
       </div>
 
       <div className="showcase-body">
-        <div className="typo-col">
+        <div className="typo-col" onPointerEnter={intent} onFocus={intent} onTouchStart={intent}>
           <ul className="typo-list" role="tablist" aria-label="Residence typologies">
             {typologies.map((t) => (
               <li key={t.id} className={`typo-item ${active === t.id ? 'is-active' : ''}`}>
@@ -91,11 +109,11 @@ export default function Showcase({ onEnquire }) {
           </div>
         </div>
 
-        <div className="stage" ref={setStage}>
+        <div className="stage" ref={setStage} onPointerEnter={intent} onTouchStart={intent}>
           {tier > 0 && !sceneReady && <div className="stage-loading">Preparing residence…</div>}
-          {tier > 0 && near && (
+          {tier > 0 && (near || preload) && (
             <Suspense fallback={null}>
-              <ShowcaseScene active={active} floor={floor} running={visible} onReady={onSceneReady} />
+              <ShowcaseScene active={active} floor={floor} running={visible} onReady={onSceneReady} prefetch={prefetch} />
             </Suspense>
           )}
           {tier === 0 && <div className="stage-loading">Interactive 3D needs a WebGL-capable browser</div>}
