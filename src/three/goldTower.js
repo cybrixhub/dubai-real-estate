@@ -42,14 +42,14 @@ function roundedRectPath(w, d, r) {
 }
 
 /** Extruded rounded-rect prism standing on y = 0. */
-function prism(w, d, r, h, curveSegments = 8) {
+export function prism(w, d, r, h, curveSegments = 8) {
   const g = new THREE.ExtrudeGeometry(roundedRectShape(w, d, r), { depth: h, bevelEnabled: false, curveSegments })
   g.rotateX(-Math.PI / 2)
   return g
 }
 
 /** Thin rounded-rect ring (slab edges, crown halo). */
-function ring(w, d, r, edge, h) {
+export function ring(w, d, r, edge, h) {
   const shape = roundedRectShape(w + edge * 2, d + edge * 2, r + edge)
   shape.holes.push(roundedRectPath(w - 0.3, d - 0.3, Math.max(0.5, r - 0.15)))
   const g = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false, curveSegments: 8 })

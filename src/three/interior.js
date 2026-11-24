@@ -33,7 +33,7 @@ function cyl(parent, rt, rb, h, mat, x, y, z, seg = 32) {
 }
 
 /** Golden-hour city panorama seen through the glass (we are ~90 m up). */
-function skylineTexture() {
+export function skylineTexture() {
   return canvasTexture(
     4096,
     1024,

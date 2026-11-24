@@ -14,6 +14,7 @@ npm run preview
 |---|---|
 | Hero | Pinned, scroll-scrubbed 3D journey: golden-hour Dubai skyline → orbit **The Aurelle Gold** (gold-fin tower, lit duplex penthouse, lantern crown, park with reflecting pond, palms and trees) → through the penthouse glass → walkthrough of a realistic penthouse interior (low sun, shadows, walnut, marble, fireplace, skyline view) with glass caption cards |
 | Residences | Interactive 3D stage: Sky Residences tower with **floor selector**, beachfront villa, penthouse **dollhouse cut-away**, marina collection |
+| Explore Every Corner | Interactive 3D residence explorer (after the showcase): select Ground / First / Second floor, the floor separates and highlights, open a furnished 3D cutaway, pick rooms in the model or the room bar, fly inside, orbit / zoom / pan, first-person walk (WASD or tap-to-walk, wall collision), reset, fullscreen. **Illustrative demonstration building** — areas computed from the plan in `src/explorer/data.js`. |
 | Neighbourhoods | Pinned scroll story over a hand-drawn SVG map (Downtown, Palm Jumeirah, Marina, Business Bay) |
 | Projects | Filterable cards + detail drawer; imagery is **rendered client-side from the 3D models** (zero image downloads) |
 | Why Dubai / About / Contact | Counters, editorial storytelling, validated enquiry form (pre-filled from floor/project CTAs) |
@@ -34,6 +35,13 @@ npm run preview
 - `src/three/HeroScene.jsx` – camera journey (`JOURNEY`, milestones `J`), city/interior render switch, staged warm-up.
 - `src/three/warmup.js` – render-based shader warm-up (screen + offscreen variants) so nothing compiles on first view.
 - Timing of captions / transition lives in `src/components/Hero.jsx` (pinned timeline, `end: +=340%`).
+
+## Residence explorer ("Explore Every Corner")
+A 40-floor gold-fin Dubai tower (same architecture as the hero) with three seamless zoom levels: **tower → floor (rest of the tower ghosted) → apartment interior**. Four residences (A–D) share each floor around a lift lobby, stair and service core. Illustrative plans only.
+- Controls: click a floor / use the elevator; click an apartment; Ctrl/⌘ + wheel zooms the model (plain wheel scrolls the page); drag to orbit.
+- **Start experience** runs an automatic cinematic walkthrough (pause / resume / replay / exit). Scrolling the section drives the same tour (ScrollTrigger, fully reversible, progress rail + room captions).
+- `src/explorer/data.js` – tower, apartment plans, rooms, stops · `tour.js` – deterministic camera path · `tower.js` – instanced tower shell + floor isolation shader · `plate.js` / `apartment.js` / `furniture.js` – floor plate and furnished rooms (merged per material) · `city.js` – surroundings · `ExplorerScene.jsx` – camera, zoom levels, picking, adaptive resolution.
+- Performance: lazy chunk, built progressively, static shadows, render-on-demand, adaptive DPR, off-range floors discarded when a floor is isolated.
 
 ## Integration points
 - `src/components/Contact.jsx` → `submit()` simulates sending; POST to your CRM/email endpoint there.

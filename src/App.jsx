@@ -4,6 +4,7 @@ import Nav from './components/Nav.jsx'
 import Hero from './components/Hero.jsx'
 import Intro from './components/Intro.jsx'
 import Showcase from './components/Showcase.jsx'
+import Explorer from './components/Explorer.jsx'
 import Locations from './components/Locations.jsx'
 import Projects from './components/Projects.jsx'
 import WhyDubai from './components/WhyDubai.jsx'
@@ -67,6 +68,7 @@ export default function App() {
         <Hero />
         <Intro />
         <Showcase onEnquire={setEnquiry} />
+        <Explorer />
         <Locations />
         <Projects onEnquire={setEnquiry} />
         <WhyDubai />
