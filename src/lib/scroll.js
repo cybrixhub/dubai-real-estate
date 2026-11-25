@@ -31,8 +31,11 @@ export function initSmoothScroll() {
 }
 
 /** Scroll to an absolute Y position (works with or without Lenis). */
-export function scrollToY(y) {
-  if (lenis) lenis.scrollTo(y, { duration: 1.4 })
+export function scrollToY(y, { immediate = false, duration = 1.1 } = {}) {
+  if (immediate) {
+    if (lenis) lenis.scrollTo(y, { immediate: true, force: true })
+    else window.scrollTo(0, y)
+  } else if (lenis) lenis.scrollTo(y, { duration })
   else window.scrollTo({ top: y, behavior: prefersReducedMotion ? 'auto' : 'smooth' })
 }
 

@@ -1,16 +1,16 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TOWER, apartments, aptById, tierOf, unitNo } from '../explorer/data.js'
-import { useInView } from '../lib/hooks.js'
 import { tier, isTouch } from '../lib/device.js'
-import { gsap, ScrollTrigger } from '../lib/scroll.js'
+import { scrollToY, lockScroll } from '../lib/scroll.js'
 import '../explorer/explorer.css'
 
 // The explorer's 3D code (tower, apartments, furniture, tour) is its own lazy chunk.
 const ExplorerScene = lazy(() => import('../explorer/ExplorerScene.jsx'))
 
 const N = TOWER.floors
-const SCROLL_VH = 950 // how much page scroll the cinematic tour spans
-const P0 = 0.035 // scroll progress at which the tour takes over from free exploration
+const SCRUB_PX = 2600 // wheel pixels for the whole scroll tour (fast, continuous)
+const P0 = 0.02 // scrub progress at which the tour takes over from free exploration
+const AUTO_SPEED = 1.85 // automatic walkthrough playback rate
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v))
 const ROOM_ORDER = ['gallery', 'living', 'dining', 'kitchen', 'master', 'mbath', 'bedroom2', 'bath2', 'balcony']
 
@@ -74,17 +74,16 @@ function Elevator({ floor, selected, onCommit, disabled }) {
 /* ----------------------------------- the section ----------------------------------- */
 export default function Explorer() {
   const root = useRef(null)
-  const track = useRef(null)
   const stage = useRef(null)
   const scene = useRef(null)
   const railFill = useRef(null)
   const railPct = useRef(null)
-  const [nearRef, near] = useInView('120% 0px', true)
-  const [visRef, visible] = useInView('0px')
-  const [preload, setPreload] = useState(false)
+  const [launched, setLaunched] = useState(false) // the 3D scene is only mounted after Explore Building
   const [ready, setReady] = useState(false)
   const [progress, setProgress] = useState({ p: 0, label: 'Preparing the skyline' })
-  const [ui, setUi] = useState({ level: 1, floor: 28, selected: false, aptId: null, roomId: null, mode: 'explore', plate: 'idle' })
+  const [ui, setUi] = useState({ level: 1, floor: 28, selected: false, aptId: null, roomId: null, mode: 'showcase', plate: 'idle' })
+  const [exp, setExp] = useState('showcase') // showcase (split layout, normal page) | active (full-screen experience)
+  const expRef = useRef('showcase')
   const [xp, setXp] = useState('explore') // explore | scroll | auto
   const xpRef = useRef('explore')
   const [caption, setCaption] = useState(null)
@@ -96,47 +95,19 @@ export default function Explorer() {
   const [full, setFull] = useState(false)
   const tourInfo = useRef({ total: 100, tStart: 0 })
   const auto = useRef({ t: 0, playing: false, raf: 0, last: 0 })
-  const scrolled = useRef(0)
+  const scrolled = useRef(0) // scrub progress 0..1 (wheel / swipe)
   const busy = useRef(0)
+  const visible = exp === 'active'
 
   const apt = ui.aptId ? aptById(ui.aptId) : null
   const tierInfo = tierOf(ui.floor)
   const room = apt && ui.roomId ? apt.rooms.find((r) => r.id === ui.roomId) : null
   const rooms = apt ? ROOM_ORDER.map((id) => apt.rooms.find((r) => r.id === id)) : []
 
-  const setStageRef = useCallback(
-    (el) => {
-      stage.current = el
-      nearRef.current = el
-      visRef.current = el
-    },
-    [nearRef, visRef]
-  )
   const setMode = (m) => {
     xpRef.current = m
     setXp(m)
   }
-
-  // warm the explorer while the visitor idles at the top (after the hero + showcase), never mid-scroll
-  useEffect(() => {
-    if (tier === 0) return
-    let t
-    const idleCb = window.requestIdleCallback || ((cb) => setTimeout(cb, 1))
-    const check = () => (window.scrollY < 40 ? idleCb(() => setPreload(true), { timeout: 2000 }) : (t = setTimeout(check, 4000)))
-    const onReady = () => (t = setTimeout(check, 22000))
-    window.addEventListener('aurelle:hero-ready', onReady)
-    return () => {
-      clearTimeout(t)
-      window.removeEventListener('aurelle:hero-ready', onReady)
-    }
-  }, [])
-
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      gsap.from('.xp-head > *', { y: 40, opacity: 0, duration: 1.2, ease: 'power3.out', stagger: 0.12, scrollTrigger: { trigger: '.xp-head', start: 'top 82%' } })
-    }, root)
-    return () => ctx.revert()
-  }, [])
 
   /* ------------------------------- scroll-driven tour ------------------------------- */
   const tourT = useCallback((v) => {
@@ -161,35 +132,78 @@ export default function Explorer() {
     api.setTour(info.tStart + (1 - info.tStart) * clamp((p - P0) / (1 - P0), 0, 1), { direct: true })
   }, [])
 
-  useEffect(() => {
-    if (!ready) return
-    const st = ScrollTrigger.create({
-      trigger: track.current,
-      start: 'top top',
-      end: 'bottom bottom',
-      onUpdate: (self) => {
-        scrolled.current = self.progress
-        if (xpRef.current === 'auto') return
-        const p = self.progress
-        const api = scene.current
-        if (!api) return
-        if (p > P0) {
-          if (xpRef.current !== 'scroll') enterScrollTour()
-          else if (tourReady.current) {
-            const { tStart } = tourInfo.current
-            api.setTour(tStart + (1 - tStart) * clamp((p - P0) / (1 - P0), 0, 1))
-          }
-        } else if (xpRef.current === 'scroll') {
-          tourReady.current = false
-          setMode('explore')
-          setCaption(null)
-          api.endTour()
-          tourT(0)
+  // Scrub the tour with the wheel / a vertical swipe — only while the full-screen experience is open.
+  const applyProgress = useCallback(
+    (p, direct = false) => {
+      scrolled.current = p
+      const api = scene.current
+      if (!api) return
+      if (p > P0) {
+        if (xpRef.current !== 'scroll') enterScrollTour()
+        else if (tourReady.current) {
+          const { tStart } = tourInfo.current
+          api.setTour(tStart + (1 - tStart) * clamp((p - P0) / (1 - P0), 0, 1), { direct })
         }
-      },
-    })
-    return () => st.kill()
-  }, [ready, enterScrollTour, tourT])
+      } else if (xpRef.current === 'scroll') {
+        tourReady.current = false
+        setMode('explore')
+        setCaption(null)
+        api.endTour()
+        tourT(0)
+      }
+    },
+    [enterScrollTour, tourT]
+  )
+  const scrub = useCallback(
+    (dp) => {
+      if (xpRef.current === 'auto') {
+        // the visitor takes over from the automatic tour at the current position
+        const a = auto.current
+        cancelAnimationFrame(a.raf)
+        a.playing = false
+        setPlaying(false)
+        setAutoDone(false)
+        const { tStart } = tourInfo.current
+        scrolled.current = P0 + clamp((a.t - tStart) / (1 - tStart), 0, 1) * (1 - P0)
+        tourReady.current = true
+        setMode('scroll')
+      } else if (xpRef.current === 'explore' && dp <= 0) return
+      applyProgress(clamp(scrolled.current + dp, 0, 1))
+    },
+    [applyProgress]
+  )
+  useEffect(() => {
+    if (exp !== 'active' || !ready) return
+    const onWheel = (e) => {
+      if (e.ctrlKey || e.metaKey) return // zoom
+      if (e.target.closest?.('.xp-card, .xp-rooms, .xp-elev')) {
+        e.preventDefault()
+        return
+      }
+      e.preventDefault()
+      scrub(e.deltaY / SCRUB_PX)
+    }
+    let ty = null
+    const onStart = (e) => (ty = e.touches.length === 1 ? e.touches[0].clientY : null)
+    const onMove = (e) => {
+      if (ty == null || e.touches.length !== 1) return
+      const y = e.touches[0].clientY
+      const dy = ty - y
+      ty = y
+      if (xpRef.current === 'explore') return // orbit with the finger; the tour starts from its button
+      e.preventDefault()
+      scrub(dy / (window.innerHeight * 1.6))
+    }
+    const el = stage.current
+    window.addEventListener('wheel', onWheel, { passive: false, capture: true })
+    el?.addEventListener('touchstart', onStart, { passive: true })
+    el?.addEventListener('touchmove', onMove, { passive: false })
+    return () => {
+      window.removeEventListener('wheel', onWheel, { capture: true })
+      el?.removeEventListener('touchstart', onStart)
+      el?.removeEventListener('touchmove', onMove)
+    }
+  }, [exp, ready, scrub])
 
   /* ------------------------------------ auto tour ------------------------------------ */
   const stopLoop = () => {
@@ -199,10 +213,10 @@ export default function Explorer() {
   const loop = useCallback((now) => {
     const a = auto.current
     if (!a.playing) return
-    const dt = Math.min(0.05, (now - a.last) / 1000)
+    const dt = Math.min(0.25, (now - a.last) / 1000) // real-time playback, even on slow frames
     a.last = now
     if (visibleRef.current) {
-      a.t = Math.min(1, a.t + dt / tourInfo.current.total)
+      a.t = Math.min(1, a.t + (dt * AUTO_SPEED) / tourInfo.current.total)
       scene.current?.setTour(a.t, { direct: true })
       tourT(a.t)
     }
@@ -289,15 +303,51 @@ export default function Explorer() {
     scene.current?.goRoom(rooms[(i + d + rooms.length) % rooms.length].id)
   }
 
+
+  /* ------------------------- showcase ⇄ explore (always user-initiated) ------------------------- */
+  const prefetch = () => import('../explorer/ExplorerScene.jsx')
+  const enterExperience = () => {
+    expRef.current = 'active'
+    scrolled.current = 0
+    setLaunched(true)
+    setExp('active')
+    lockScroll(true)
+    if (ready) scene.current?.showcase(false)
+  }
+  const exitExperience = useCallback(() => {
+    stopLoop()
+    setPlaying(false)
+    setAutoDone(false)
+    setCaption(null)
+    tourT(0)
+    tourReady.current = false
+    scrolled.current = 0
+    xpRef.current = 'explore'
+    setXp('explore')
+    expRef.current = 'showcase'
+    setExp('showcase')
+    if (document.fullscreenElement) document.exitFullscreen?.()
+    lockScroll(false)
+    const api = scene.current
+    api?.endTour()
+    api?.showcase(true)
+  }, [tourT])
+  useEffect(() => () => lockScroll(false), [])
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== 'Escape' || document.fullscreenElement || !visible) return
       if (xpRef.current === 'auto') exitTour()
-      else if (xpRef.current === 'explore') scene.current?.backOut()
+      else if (xpRef.current === 'scroll') exitTour()
+      else if (scene.current?.state?.().level > 1) scene.current.backOut()
+      else exitExperience()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [visible, exitTour])
+  }, [visible, exitTour, exitExperience])
+  const skip = () => {
+    const next = root.current?.nextElementSibling
+    if (next) scrollToY(next.getBoundingClientRect().top + window.scrollY, { duration: 0.7 })
+  }
 
   const toggleFull = () => {
     if (!document.fullscreenElement) stage.current?.requestFullscreen?.().catch(() => {})
@@ -311,7 +361,7 @@ export default function Explorer() {
 
   const onReady = useCallback(() => {
     setReady(true)
-    setTimeout(() => ScrollTrigger.refresh(), 50)
+    if (expRef.current === 'active') scene.current?.showcase(false)
   }, [])
   const onTour = useCallback(({ stop }) => setCaption(stop), [])
   const dive = ui.mode === 'tour'
@@ -319,27 +369,72 @@ export default function Explorer() {
   const levelLabel = ['', 'Tower', 'Floor', 'Residence'][ui.level]
   const hint = dive
     ? isTouch ? 'Scroll to move through the residence' : 'Scroll to move through the residence'
-    : isTouch ? 'Drag to orbit · pinch to zoom' : 'Drag to orbit · Ctrl + scroll to zoom · scroll to begin the tour'
+    : isTouch ? 'Drag to orbit · pinch to zoom' : 'Drag to orbit · Ctrl + scroll to zoom · scroll to begin the tour · Esc to exit'
   const capRoom = caption?.room && apt ? apt.rooms.find((r) => r.id === caption.room) : null
 
   return (
-    <section id="explore" className="xp" ref={root} aria-label="Interactive 3D residence explorer">
-      <div className="xp-head">
-        <span className="eyebrow">Residence explorer · in 3D</span>
-        <h2 className="display h2">
-          Explore Every <em>Corner</em>
-        </h2>
-        <p className="lead">Step inside a new dimension of luxury living.</p>
-        <p className="xp-note">
-          The Aurelle Gold is an illustrative demonstration tower: forty floors, four residences on each. Layouts and areas show design intent and are
-          not architectural plans.
-        </p>
+    <section id="explore" className={`xp is-${exp}`} ref={root} aria-label="Residence explorer">
+      <div className="xp-split">
+        <div className="xp-copy">
+          <span className="eyebrow">The Aurelle Gold · Downtown Dubai</span>
+          <h2 className="display h2">
+            Discover Your <em>Future Residence</em>
+          </h2>
+          <p className="lead">
+            A forty-storey tower wrapped in brushed-gold fins, rising above the Burj skyline — four private residences on every floor, each with
+            floor-to-ceiling views of the Gulf and the city.
+          </p>
+          <dl className="xp-info">
+            <div>
+              <dt>{TOWER.floors}</dt>
+              <dd>Floors</dd>
+            </div>
+            <div>
+              <dt>158 m</dt>
+              <dd>Height</dd>
+            </div>
+            <div>
+              <dt>{TOWER.floors * 4}</dt>
+              <dd>Residences</dd>
+            </div>
+            <div>
+              <dt>4</dt>
+              <dd>Per floor</dd>
+            </div>
+          </dl>
+          <ul className="xp-types">
+            {apartments.map((a) => (
+              <li key={a.id}>
+                <b>{a.id}</b>
+                <span>{a.type}</span>
+                <em>{a.interior} m²</em>
+              </li>
+            ))}
+          </ul>
+          <div className="xp-cta">
+            {tier > 0 && (
+              <button className="btn" onClick={enterExperience} onPointerEnter={prefetch} onFocus={prefetch}>
+                Explore Building <span className="arrow" />
+              </button>
+            )}
+            <button className="btn btn--ghost" onClick={skip}>
+              Continue to Next Section
+            </button>
+          </div>
+          <p className="xp-note">Illustrative demonstration tower. Layouts and areas show design intent, not architectural plans.</p>
+        </div>
+        <div className="xp-poster" aria-hidden="false">
+          <picture>
+            <source media="(max-width: 820px)" srcSet="/explorer-tower-m.webp" />
+            <img src="/explorer-tower.webp" alt="The Aurelle Gold — a forty-floor gold-finned residential tower in Downtown Dubai" decoding="async" fetchpriority="high" />
+          </picture>
+        </div>
       </div>
 
-      <div className="xp-track" ref={track} style={{ height: `${100 + SCROLL_VH}vh` }}>
-        <div className={`xp-stage ${full ? 'is-full' : ''} ${dive ? 'is-tour' : ''}`} ref={setStageRef}>
-          {tier > 0 && (near || preload) && (
-            <Suspense fallback={null}>
+      {launched && tier > 0 && (
+        <div className={`xp-stage ${exp === 'active' ? 'is-live' : 'is-off'} ${full ? 'is-full' : ''} ${dive ? 'is-tour' : ''}`} ref={stage}>
+          <img className={`xp-stage-poster ${ready ? 'is-gone' : ''}`} src="/explorer-tower.webp" alt="" />
+          <Suspense fallback={null}>
               <ExplorerScene
                 ref={scene}
                 running={visible || full}
@@ -351,24 +446,7 @@ export default function Explorer() {
                 onLabels={setLabels}
                 onHoverApt={setHoverApt}
               />
-            </Suspense>
-          )}
-
-          {tier === 0 && (
-            <div className="xp-fallback">
-              <p>Interactive 3D needs a WebGL-capable browser. The Aurelle Gold has forty floors with four residences on each:</p>
-              {apartments.map((a) => (
-                <div key={a.id}>
-                  <h4>
-                    Residence {a.id} — {a.name}
-                  </h4>
-                  <p>
-                    {a.type} · {a.interior} m² interior · {a.balconyArea} m² balcony · {a.view}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
+          </Suspense>
 
           {loading && (
             <div className="xp-loading" role="status" aria-live="polite">
@@ -379,10 +457,13 @@ export default function Explorer() {
             </div>
           )}
 
-          {ready && (
+          {ready && exp === 'active' && (
             <>
               {/* ---------------------------- exploring UI ---------------------------- */}
               <div className={`xp-ui ${xp === 'explore' ? '' : 'is-hidden'}`}>
+                <button className="xp-exit" onClick={exitExperience} aria-label="Exit experience">
+                  <span aria-hidden="true">✕</span> Exit
+                </button>
                 <Elevator floor={ui.floor} selected={ui.selected} onCommit={commitFloor} disabled={xp !== 'explore'} />
 
                 <div className="xp-levels glass" role="tablist" aria-label="Zoom level">
@@ -395,7 +476,7 @@ export default function Explorer() {
                 </div>
 
                 <button className="btn xp-start" onClick={() => startAuto(true)}>
-                  Start experience <span className="arrow" />
+                  Guided tour <span className="arrow" />
                 </button>
 
                 {/* context card */}
@@ -563,7 +644,8 @@ export default function Explorer() {
                       Restart
                     </button>
                   )}
-                  <button onClick={exitTour}>{xp === 'auto' ? 'Exit tour' : 'Back to explore'}</button>
+                  <button onClick={exitTour}>{xp === 'auto' ? 'Stop tour' : 'Back to explore'}</button>
+                  <button onClick={exitExperience}>Exit experience</button>
                 </div>
                 {xp === 'scroll' && <div className="xp-scrollhint">Scroll · the camera follows</div>}
               </div>
@@ -572,7 +654,7 @@ export default function Explorer() {
             </>
           )}
         </div>
-      </div>
+      )}
     </section>
   )
 }

@@ -75,7 +75,7 @@ const World = forwardRef(function World({ P }, ref) {
   const focusRef = useRef()
   const W = useRef({}).current // scene objects
   const S = useRef({
-    mode: 'explore', // explore | tour
+    mode: 'showcase', // showcase | overview | explore | tour
     level: 1, // zoom level while exploring: 1 tower · 2 floor · 3 apartment
     floor: DEFAULT.floor,
     selected: false,
@@ -120,7 +120,7 @@ const World = forwardRef(function World({ P }, ref) {
     // floors rise only while the camera is above them; they settle down as it dives into the apartment
     const hf = smooth(camera.position.y, base + 2.4, base + 9.5)
     const lift = S.view.lift * hf
-    const hoverFloor = S.level === 1 && S.mode === 'explore' ? S.hoverFloor : null
+    const hoverFloor = S.level === 1 && (S.mode === 'explore' || S.mode === 'overview') ? S.hoverFloor : null
     const floorSel = hoverFloor ?? (S.selected || isolate > 0.02 ? S.floor : null)
     W.tower?.setView({ floor: floorSel, isolate, lift })
     if (W.plate) {
@@ -146,7 +146,7 @@ const World = forwardRef(function World({ P }, ref) {
     if (!sun) return
     let c
     let half
-    if (S.view.isolate < 0.5 && S.mode === 'explore') {
+    if (S.view.isolate < 0.5 && S.mode !== 'tour') {
       c = V(0, 60, 40)
       half = 230
     } else {
@@ -241,7 +241,9 @@ const World = forwardRef(function World({ P }, ref) {
 
   const az = () => Math.atan2(camera.position.x - (ctrl?.target.x ?? 0), camera.position.z - (ctrl?.target.z ?? 0))
 
-  const L1 = () => {
+  const SHOW = { az: 0.5, el: 0.1, r: 385, ty: TOP_Y * 0.5 }
+  const L1 = (tight = false) => {
+    if (tight) return { pos: orbitPos([0, SHOW.ty, 0], SHOW.az, SHOW.el, SHOW.r * Math.min(kAsp(), 1.5)), look: V(0, SHOW.ty, 0), fov: 32, view: { isolate: 0, lift: 0 } }
     const t = [0, TOP_Y * 0.5, 0]
     // the establishing shot always starts over the Gulf, never inside the city (orbiting is still free)
     const a = clamp(az(), -0.55, 0.95)
@@ -438,6 +440,84 @@ const World = forwardRef(function World({ P }, ref) {
     await fly({ pos: sv.pos, look: sv.target, ctrlTarget: sv.target, fov: sv.fov, view: sv.view }, 1.4)
   }
 
+  /* ------------------------------ showcase / overview modes ------------------------------ */
+  /** Showcase = the quiet default: whole tower, no interaction. Off = free exploration. */
+  const showcase = async (on) => {
+    S.tl?.kill()
+    if (!on) {
+      S.mode = 'explore'
+      S.hoverFloor = null
+      apply()
+      if (ctrl) ctrl.enabled = true
+      emit()
+      return
+    }
+    S.mode = 'showcase'
+    S.level = 1
+    S.selected = false
+    S.hoverFloor = null
+    S.roomId = null
+    S.aptId = null
+    limits(1)
+    if (ctrl) ctrl.enabled = false
+    emit()
+    await fly(L1(true), 0.9, { ease: 'power2.inOut' })
+    S.mode = 'showcase'
+    if (ctrl) ctrl.enabled = false
+    emit()
+  }
+  /** Short, purposeful flight: whole tower → base & facade → up to the crown (floors light up) → back to the full view. */
+  const overview = () =>
+    new Promise((resolve) => {
+      S.tl?.kill()
+      S.mode = 'overview'
+      S.level = 1
+      S.selected = false
+      limits(1)
+      if (ctrl) ctrl.enabled = false
+      emit()
+      const k = kAsp()
+      const R = SHOW.r * Math.min(k, 1.5)
+      const a0 = SHOW.az
+      const o = { az: a0, el: SHOW.el, r: R, ty: SHOW.ty, fov: 32, fl: 0 }
+      const tgt = V(0, 0, 0)
+      const upd = () => {
+        tgt.set(0, o.ty, 0)
+        camera.position.copy(orbitPos([0, o.ty, 0], o.az, o.el, o.r))
+        camera.lookAt(tgt)
+        camera.fov = o.fov
+        camera.updateProjectionMatrix()
+        const f = o.fl > 0.5 ? clamp(Math.round(o.fl), 1, TOWER.floors) : null
+        if (f !== S.hoverFloor) {
+          S.hoverFloor = f
+          apply()
+        }
+        invalidate()
+      }
+      const end = () => {
+        S.hoverFloor = null
+        S.mode = 'showcase'
+        S.view.isolate = 0
+        apply()
+        if (ctrl) {
+          ctrl.target.copy(tgt)
+          ctrl.update()
+        }
+        emit()
+        invalidate()
+        resolve()
+      }
+      const tl = gsap.timeline({ onUpdate: upd, onComplete: end })
+      // 1 · sweep low around the base and podium, looking up the gold fins
+      tl.to(o, { az: a0 + 1.35, el: 0.05, r: 240 * Math.min(k, 1.5), ty: TOP_Y * 0.3, fov: 38, duration: 1.8, ease: 'power2.inOut' })
+      // 2 · climb the facade to the crown while the residential floors light up one by one
+      tl.to(o, { az: a0 + 2.7, el: 0.1, r: 175 * Math.min(k, 1.5), ty: TOP_Y * 0.84, duration: 2.4, ease: 'power1.inOut' })
+      tl.to(o, { fl: TOWER.floors, duration: 2.4, ease: 'none' }, '<')
+      // 3 · pull back to the complete tower
+      tl.to(o, { az: a0 + Math.PI * 2, el: SHOW.el, r: R, ty: SHOW.ty, fov: 32, fl: 0, duration: 2.2, ease: 'power2.inOut' })
+      S.tl = tl
+    })
+
   /* ------------------------------------- imperative API ------------------------------------- */
   useImperativeHandle(
     ref,
@@ -448,6 +528,8 @@ const World = forwardRef(function World({ P }, ref) {
       goRoom: (id) => goL3(S.aptId || DEFAULT.apt, id),
       selectFloor,
       backOut: () => (S.level === 3 ? goL2(S.floor) : S.level === 2 ? goL1() : null),
+      showcase,
+      overview,
       beginTour,
       setTour,
       endTour,
@@ -515,7 +597,7 @@ const World = forwardRef(function World({ P }, ref) {
       }
       if (!alive) return
       // opening shot: the whole tower in the Dubai skyline
-      const f = L1()
+      const f = L1(S.mode === 'showcase')
       camera.position.copy(f.pos)
       ctrl.target.copy(f.look)
       camera.fov = f.fov
@@ -523,6 +605,7 @@ const World = forwardRef(function World({ P }, ref) {
       camera.lookAt(f.look)
       ctrl.update()
       limits(1)
+      ctrl.enabled = S.mode === 'explore'
       gl.shadowMap.autoUpdate = false
       fitShadow()
       apply()
@@ -556,7 +639,7 @@ const World = forwardRef(function World({ P }, ref) {
     // floor view: slide the plan left so it sits between the elevator rail and the info card
     const portrait = size.width <= 820
     const wantOff = S.level === 2 && S.mode === 'explore' && S.view.isolate > 0.5 && !portrait ? 0.07 : 0
-    const wantY = portrait && S.mode === 'explore' && S.level < 3 ? 0.13 : 0
+    const wantY = portrait && S.mode === 'explore' && S.level < 3 ? (S.level === 1 ? 0.025 : 0.13) : 0
     if (Math.abs(S.xoff - wantOff) > 0.0004 || Math.abs(S.yoff - wantY) > 0.0004) {
       S.xoff += (wantOff - S.xoff) * (1 - Math.exp(-dt * 4))
       S.yoff += (wantY - S.yoff) * (1 - Math.exp(-dt * 4))
@@ -577,7 +660,7 @@ const World = forwardRef(function World({ P }, ref) {
       const diff = S.tTarget - S.tDisp
       if (S.direct) S.tDisp = S.tTarget
       else if (Math.abs(diff) > 2e-5) {
-        S.tDisp += diff * (1 - Math.exp(-dt * 12))
+        S.tDisp += diff * (1 - Math.exp(-dt * 18))
         invalidate()
       }
       const T = S.tDisp * tour.total
@@ -738,7 +821,7 @@ const World = forwardRef(function World({ P }, ref) {
       }
     }
     // vertical swipes scroll the page on touch; horizontal drags orbit; pinch zooms
-    el.style.touchAction = 'pan-y'
+    el.style.touchAction = 'none'
     el.addEventListener('wheel', onWheel, { capture: true, passive: false })
     el.addEventListener('pointerdown', onDown)
     el.addEventListener('pointerup', onUp)
@@ -756,7 +839,7 @@ const World = forwardRef(function World({ P }, ref) {
   useEffect(() => {
     const el = gl.domElement
     const hold = () => {
-      if (el.style.touchAction !== 'pan-y') el.style.touchAction = 'pan-y'
+      if (el.style.touchAction !== 'none') el.style.touchAction = 'none'
     }
     hold()
     const id = setInterval(hold, 400)

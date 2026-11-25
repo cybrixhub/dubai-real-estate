@@ -13,11 +13,10 @@ const smooth = (s) => s * s * (3 - 2 * s)
 const smoother = (s) => s * s * s * (s * (s * 6 - 15) + 10)
 const easeIn = (s) => 2 * s * s - s * s * s // ends at unit speed (a pass-through, no stop)
 const easeOut = (s) => 1 - easeIn(1 - s)
+// Mostly linear: the camera keeps moving through every room instead of braking at each stop.
 function ease(s, fromStop, toStop) {
-  if (fromStop && toStop) return smoother(s)
-  if (fromStop) return easeIn(s)
-  if (toStop) return easeOut(s)
-  return s
+  const e = fromStop && toStop ? smooth(s) : fromStop ? easeIn(s) : toStop ? easeOut(s) : s
+  return 0.8 * s + 0.2 * e
 }
 
 export function buildTour(apt, floor, k = 1) {
@@ -64,7 +63,8 @@ export function buildTour(apt, floor, k = 1) {
   // timeline
   let t = 0
   poses.forEach((p, i) => {
-    p.dur = i === 0 ? 0 : p.dur
+    p.dur = i === 0 ? 0 : p.dur * 0.68 // brisk, still eased
+    if (p.dwell) p.dwell *= 0.45
     p.a = t + p.dur
     p.l = p.a + (p.dwell || 0)
     t = p.l

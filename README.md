@@ -36,12 +36,12 @@ npm run preview
 - `src/three/warmup.js` – render-based shader warm-up (screen + offscreen variants) so nothing compiles on first view.
 - Timing of captions / transition lives in `src/components/Hero.jsx` (pinned timeline, `end: +=340%`).
 
-## Residence explorer ("Explore Every Corner")
-A 40-floor gold-fin Dubai tower (same architecture as the hero) with three seamless zoom levels: **tower → floor (rest of the tower ghosted) → apartment interior**. Four residences (A–D) share each floor around a lift lobby, stair and service core. Illustrative plans only.
-- Controls: click a floor / use the elevator; click an apartment; Ctrl/⌘ + wheel zooms the model (plain wheel scrolls the page); drag to orbit.
-- **Start experience** runs an automatic cinematic walkthrough (pause / resume / replay / exit). Scrolling the section drives the same tour (ScrollTrigger, fully reversible, progress rail + room captions).
-- `src/explorer/data.js` – tower, apartment plans, rooms, stops · `tour.js` – deterministic camera path · `tower.js` – instanced tower shell + floor isolation shader · `plate.js` / `apartment.js` / `furniture.js` – floor plate and furnished rooms (merged per material) · `city.js` – surroundings · `ExplorerScene.jsx` – camera, zoom levels, picking, adaptive resolution.
-- Performance: lazy chunk, built progressively, static shadows, render-on-demand, adaptive DPR, off-range floors discarded when a floor is isolated.
+## Residence explorer ("Discover Your Future Residence")
+Two distinct modes:
+1. **Showcase (default)** – a normal, unpinned split layout: details on the left (40%), a pre-rendered tower image on the right (60%). No 3D scene is created. "Continue to Next Section" scrolls straight on.
+2. **Full-screen experience** – "Explore Building" lazy-loads the 3D scene as a fixed full-screen overlay (page scroll locked until you exit). Wheel / vertical swipe scrubs the cinematic tour (reversible), "Guided tour" plays it automatically, Esc or Exit returns to the split layout.
+- `public/explorer-tower*.webp` – showcase posters (desktop / mobile) captured from the 3D scene.
+- `src/explorer/data.js` plans & stops · `tour.js` camera path · `tower.js` instanced tower + floor isolation shader · `plate.js`, `apartment.js`, `furniture.js` floor & rooms · `city.js` surroundings · `ExplorerScene.jsx` camera, zoom levels, picking, adaptive resolution.
 
 ## Integration points
 - `src/components/Contact.jsx` → `submit()` simulates sending; POST to your CRM/email endpoint there.
